@@ -1,0 +1,66 @@
+import pandas as pd
+import serial
+import time
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+
+# === Load and train the model ===
+data = pd.read_csv("disaster_data.csv")
+X = data[["Temp", "Humidity", "Gas", "Vibration", "Distance", "Button"]]
+y = data["Label"]
+
+model = RandomForestClassifier()
+model.fit(X, y)
+
+# === Setup Serial ===
+try:
+    ser = serial.Serial("COM3", 9600, timeout=2)  # Replace with your COM port
+    time.sleep(2)
+    print("✅ Connected to ESP32 on COM5\n")
+except Exception as e:
+    print(f"❌ Serial Connection Failed: {e}")
+    exit()
+
+print("🔁 Starting continuous prediction...\n")
+
+# === Main loop ===
+while True:
+    try:
+        line = ser.readline().decode().strip()
+        if line:
+            # Split incoming CSV line into values
+            parts = line.split(",")
+            if len(parts) == 6:
+                sensor_input = {
+                    "Temp": float(parts[0]),
+                    "Humidity": float(parts[1]),
+                    "Gas": int(parts[2]),
+                    "Vibration": int(parts[3]),
+                    "Distance": float(parts[4]),
+                    "Button": int(parts[5])
+                }
+
+                # Display values
+                print("📟 Sensor Values:")
+                for key, val in sensor_input.items():
+                    print(f"  {key}: {val}")
+
+                # Create DataFrame and predict
+                input_df = pd.DataFrame([sensor_input])
+                prediction = model.predict(input_df)[0]
+                print(f"🚨 Predicted Disaster Type: {prediction}")
+
+                # Send prediction back to ESP32
+                ser.write((prediction + "\n").encode())
+                print("📤 Sent to ESP32\n")
+
+            else:
+                print(f"⚠️ Unexpected data format: {line}")
+
+        time.sleep(1)  # wait 1 second before reading again
+
+    except KeyboardInterrupt:
+        print("\n🛑 Stopped by user.")
+        break
+    except Exception as err:
+        print(f"⚠️ Error: {err}")

@@ -1,0 +1,143 @@
+#define BLYNK_TEMPLATE_ID "TMPL3BJHz_sVD"
+#define BLYNK_TEMPLATE_NAME "EarlyGuard"
+#define BLYNK_AUTH_TOKEN "rge696XH_Pr9YBIOir9lwnRubdn5CuLL"
+
+#include &lt;WiFi.h&gt;
+#include &lt;BlynkSimpleEsp32.h&gt;
+#include &lt;Wire.h&gt;
+#include &lt;DHT.h&gt;
+#include &lt;LiquidCrystal_PCF8574.h&gt;
+
+char ssid[] = "Oppo A53";
+char pass[] = "8660398026";
+
+#define DHTPIN         4
+#define DHTTYPE        DHT22
+#define PIEZO_PIN      35
+#define TRIG_PIN       18
+#define ECHO_PIN       19
+#define BUTTON_PIN     25
+#define LED_PIN        12
+#define BUZZER_PIN     13
+#define MQ135_PIN      34
+
+DHT dht(DHTPIN, DHTTYPE);
+LiquidCrystal_PCF8574 lcd(0x27);
+
+float TEMP_THRESHOLD   = 40.0;
+float HUM_THRESHOLD    = 90.0;
+int   GAS_THRESHOLD    = 300;
+float DIST_THRESHOLD   = 10.0;
+int   PIEZO_THRESHOLD  = 2000;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  dht.begin();
+  lcd.begin(16, 2);
+  lcd.setBacklight(255);
+  lcd.setCursor(0, 0); lcd.print(" EarlyGuard Init ");
+  lcd.setCursor(0, 1); lcd.print(" Please Wait... ");
+  delay(2000); lcd.clear();
+
+  WiFi.begin(ssid, pass);
+  unsigned long startAttemptTime = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+    delay(500);
+  }
+  Serial.println(WiFi.status() == WL_CONNECTED ? "✅ WiFi connected!" : "❌ Failed to connect");
+
+  Blynk.config(BLYNK_AUTH_TOKEN);
+  Blynk.connect();
+}
+
+float getUltrasonicDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  long duration = pulseIn(ECHO_PIN, HIGH);
+  return duration * 0.034 / 2;
+}
+
+bool detectVibrationAnalog() {
+  int piezoValue = analogRead(PIEZO_PIN);
+  return piezoValue > PIEZO_THRESHOLD;
+}
+
+void loop() {
+  Blynk.run();
+
+  float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
+  int gasValue = analogRead(MQ135_PIN);
+  float distance_cm = getUltrasonicDistance();
+  bool vibrationDetected = detectVibrationAnalog();
+  bool buttonPressed = digitalRead(BUTTON_PIN) == LOW;
+
+  bool alert = (
+    temperature > TEMP_THRESHOLD ||
+    humidity > HUM_THRESHOLD ||
+    gasValue > GAS_THRESHOLD ||
+    distance_cm < DIST_THRESHOLD ||
+    vibrationDetected
+  );
+
+  Blynk.virtualWrite(V0, temperature);
+  Blynk.virtualWrite(V1, humidity);
+  Blynk.virtualWrite(V2, gasValue);
+  Blynk.virtualWrite(V3, distance_cm);
+  Blynk.virtualWrite(V4, vibrationDetected ? 1 : 0);
+  Blynk.virtualWrite(V5, alert ? "ALERT!" : "Safe");
+
+  if (buttonPressed) {
+    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    lcd.clear();
+    lcd.setCursor(0, 0); lcd.print("Manual Alert!!!");
+    lcd.setCursor(0, 1); lcd.print("Push Button ON");
+    delay(2000);
+    return;
+  }
+
+  if (alert) {
+    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    String alertMsg = "⚠ ALERT: ";
+    if (temperature > TEMP_THRESHOLD)
+      alertMsg += "High Temp. ";
+    if (humidity > HUM_THRESHOLD)
+      alertMsg += "High Humidity. ";
+    if (gasValue > GAS_THRESHOLD)
+      alertMsg += "Gas Detected. ";
+    if (distance_cm < DIST_THRESHOLD)
+      alertMsg += "Water Level High. ";
+    if (vibrationDetected)
+      alertMsg += "Vibration! ";
+    Blynk.logEvent("alert_triggered", alertMsg);
+    lcd.clear();
+    lcd.setCursor(0, 0); lcd.print("Alert! Move to");
+    lcd.setCursor(0, 1); lcd.print("safer place!");
+    delay(3000);
+  } else {
+    digitalWrite(LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("T:"); lcd.print(temperature, 1);
+    lcd.print(" H:"); lcd.print(humidity, 0); lcd.print("%");
+    lcd.setCursor(0, 1);
+    lcd.print("G:"); lcd.print(gasValue);
+    lcd.print(" W:"); lcd.print(distance_cm, 0); lcd.print("cm");
+  }
+
+  delay(2000);
+}

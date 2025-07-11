@@ -1,0 +1,189 @@
+// === Libraries ===
+#include <WiFi.h>
+#include <Wire.h>
+#include <DHT.h>
+#include <LiquidCrystal_PCF8574.h>
+#include <FirebaseESP32.h>
+#include <UniversalTelegramBot.h>
+#include <WiFiClientSecure.h>
+
+// === WiFi Credentials ===
+#define WIFI_SSID "Oppo A53"
+#define WIFI_PASSWORD "8660398026"
+
+// === Firebase Credentials ===
+#define FIREBASE_HOST "https://early-guard-default-rtdb.asia-southeast1.firebasedatabase.app/"
+#define FIREBASE_AUTH "0CgNz5aY8Y4joly0fprPqxbNAcPVHlKdTDMyAr9h"
+
+// === Telegram Bot Credentials ===
+#define BOT_TOKEN "8059734638:AAGeucvz97rNVolk6nI37D_VzGfR8clN2kM"
+#define CHAT_ID "1847496812"
+
+// === Firebase Setup ===
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+// === Telegram Setup ===
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOT_TOKEN, client);
+
+// === DHT Sensor ===
+#define DHTPIN 4
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
+
+// === LCD Display ===
+LiquidCrystal_PCF8574 lcd(0x27);
+
+// === Sensor Pins ===
+#define PIEZO_PIN     35
+#define TRIG_PIN      18
+#define ECHO_PIN      19
+#define BUTTON_PIN    25
+#define LED_PIN       12
+#define BUZZER_PIN    13
+#define MQ135_PIN     34
+
+// === Thresholds ===
+float TEMP_THRESHOLD   = 40.0;
+float HUM_THRESHOLD    = 90.0;
+int   GAS_THRESHOLD    = 300;
+float DIST_THRESHOLD   = 10.0;
+int   PIEZO_THRESHOLD  = 2000;
+
+// === Device Location & ID ===
+#define DEVICE_ID "infosys_mysore"
+#define DEVICE_LAT 12.3100
+#define DEVICE_LNG 76.6100
+
+unsigned long lastTelegramSent = 0;
+const unsigned long telegramInterval = 30000;  // 30 seconds
+
+void setup() {
+  Serial.begin(115200);
+
+  // === WiFi Connect ===
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\n✅ WiFi Connected");
+
+  client.setInsecure();  // For Telegram
+
+  // === Firebase Setup ===
+  config.database_url = FIREBASE_HOST;
+  config.signer.tokens.legacy_token = FIREBASE_AUTH;
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+
+  // === Sensor Setup ===
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  dht.begin();
+  lcd.begin(16, 2);
+  lcd.setBacklight(255);
+  lcd.setCursor(0, 0); lcd.print(" EarlyGuard Init ");
+  lcd.setCursor(0, 1); lcd.print(" Please Wait... ");
+  delay(2000); lcd.clear();
+}
+
+float getUltrasonicDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  long duration = pulseIn(ECHO_PIN, HIGH);
+  return duration * 0.034 / 2;
+}
+
+bool detectVibration() {
+  int piezoValue = analogRead(PIEZO_PIN);
+  return piezoValue > PIEZO_THRESHOLD;
+}
+
+void sendTelegramAlert(String message) {
+  if (millis() - lastTelegramSent > telegramInterval) {
+    bot.sendMessage(CHAT_ID, message, "");
+    lastTelegramSent = millis();
+  }
+}
+
+void loop() {
+  float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
+  int gas = analogRead(MQ135_PIN);
+  float distance = getUltrasonicDistance();
+  bool vibration = detectVibration();
+  bool buttonPressed = digitalRead(BUTTON_PIN) == LOW;
+
+  bool alert = (
+    temperature > TEMP_THRESHOLD ||
+    humidity > HUM_THRESHOLD ||
+    gas > GAS_THRESHOLD ||
+    distance < DIST_THRESHOLD ||
+    vibration || buttonPressed
+  );
+
+  digitalWrite(LED_PIN, alert ? HIGH : LOW);
+  digitalWrite(BUZZER_PIN, alert ? HIGH : LOW);
+
+  // === Firebase Upload ===
+  String path = "/EarlyGuard/devices/" + String(DEVICE_ID);
+  Firebase.setFloat(fbdo, path + "/temperature", temperature);
+  Firebase.setFloat(fbdo, path + "/humidity", humidity);
+  Firebase.setInt(fbdo, path + "/gas", gas);
+  Firebase.setFloat(fbdo, path + "/water_level_cm", distance);
+  Firebase.setBool(fbdo, path + "/vibration", vibration);
+  Firebase.setBool(fbdo, path + "/manual_alert", buttonPressed);
+  Firebase.setBool(fbdo, path + "/alert", alert);
+  Firebase.setFloat(fbdo, path + "/lat", DEVICE_LAT);
+  Firebase.setFloat(fbdo, path + "/lng", DEVICE_LNG);
+
+  // === Telegram Alert ===
+  if (alert) {
+    String alertMsg = "🚨 Disaster Alert Triggered!\n";
+    alertMsg += "🌡 Temp: " + String(temperature) + "°C\n";
+    alertMsg += "💧 Hum: " + String(humidity) + "%\n";
+    alertMsg += "🧪 Gas: " + String(gas) + "\n";
+    alertMsg += "🌊 Water: " + String(distance) + "cm\n";
+    alertMsg += "💥 Vibration: " + String(vibration ? "Yes" : "No") + "\n";
+    alertMsg += "🧑 Manual Alert: " + String(buttonPressed ? "Yes" : "No");
+    sendTelegramAlert(alertMsg);
+  }
+
+  // === LCD Display ===
+  lcd.clear();
+  if (alert) {
+    lcd.setCursor(0, 0); lcd.print("!! ALERT ACTIVE !!");
+    lcd.setCursor(0, 1); lcd.print("Evacuate Now!");
+  } else {
+    lcd.setCursor(0, 0);
+    lcd.print("T:"); lcd.print(temperature, 1);
+    lcd.print(" H:"); lcd.print(humidity, 0); lcd.print("%");
+    lcd.setCursor(0, 1);
+    lcd.print("G:"); lcd.print(gas);
+    lcd.print(" W:"); lcd.print(distance, 0); lcd.print("cm");
+  }
+
+  // === Serial Monitor ===
+  Serial.println("==== Sensor Readings ====");
+  Serial.print("Temperature: "); Serial.println(temperature);
+  Serial.print("Humidity   : "); Serial.println(humidity);
+  Serial.print("Gas        : "); Serial.println(gas);
+  Serial.print("Water Level: "); Serial.print(distance); Serial.println(" cm");
+  Serial.print("Vibration  : "); Serial.println(vibration ? "YES" : "NO");
+  Serial.print("Button     : "); Serial.println(buttonPressed ? "YES" : "NO");
+  Serial.print("ALERT      : "); Serial.println(alert ? "ACTIVE" : "SAFE");
+  Serial.println("==========================");
+
+  delay(5000);
+}
