@@ -74,8 +74,6 @@ graph TD;
 ```
 
 ---
-##  Code: EarlyGuard – Real-Time Sensor Alert System
-
 
 ##  Deployment Steps
 
