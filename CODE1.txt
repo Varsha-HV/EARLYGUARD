@@ -8,16 +8,16 @@
 #include <WiFiClientSecure.h>
 
 // === WiFi Credentials ===
-#define WIFI_SSID "Oppo A53"
-#define WIFI_PASSWORD "8660398026"
+#define WIFI_SSID "******"
+#define WIFI_PASSWORD "*******"
 
 // === Firebase Credentials ===
 #define FIREBASE_HOST "https://early-guard-default-rtdb.asia-southeast1.firebasedatabase.app/"
 #define FIREBASE_AUTH "0CgNz5aY8Y4joly0fprPqxbNAcPVHlKdTDMyAr9h"
 
 // === Telegram Bot Credentials ===
-#define BOT_TOKEN "8059734638:AAGeucvz97rNVolk6nI37D_VzGfR8clN2kM"
-#define CHAT_ID "1847496812"
+#define BOT_TOKEN "*********"
+#define CHAT_ID "*******"
 
 // === Firebase Setup ===
 FirebaseData fbdo;
