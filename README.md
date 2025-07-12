@@ -127,12 +127,6 @@ graph TD;
 * NEHA M N – Alert message through Blynk app and through Email
 ---
 
-##  License
-
-This project is open-sourced under the MIT License. See LICENSE for details.
-
----
-
 ##  Contact & Acknowledgments
 
 Made as part of the Infosys Hackathon 2025.
