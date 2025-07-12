@@ -1,6 +1,6 @@
-#define BLYNK_TEMPLATE_ID "TMPL3BJHz_sVD"
+#define BLYNK_TEMPLATE_ID "your id"
 #define BLYNK_TEMPLATE_NAME "EarlyGuard"
-#define BLYNK_AUTH_TOKEN "rge696XH_Pr9YBIOir9lwnRubdn5CuLL"
+#define BLYNK_AUTH_TOKEN "****************"
 
 #include &lt;WiFi.h&gt;
 #include &lt;BlynkSimpleEsp32.h&gt;
@@ -8,8 +8,8 @@
 #include &lt;DHT.h&gt;
 #include &lt;LiquidCrystal_PCF8574.h&gt;
 
-char ssid[] = "Oppo A53";
-char pass[] = "8660398026";
+char ssid[] = "********";
+char pass[] = "*************";
 
 #define DHTPIN         4
 #define DHTTYPE        DHT22
